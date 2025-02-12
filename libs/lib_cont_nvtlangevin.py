@@ -9,7 +9,7 @@ import random
 import numpy as np
 from decimal import Decimal
 
-from libs.lib_util    import single_print, timeit
+from libs.lib_util    import Structure, single_print, timeit
 from libs.lib_MD_util import get_forces, get_MDinfo_temp, get_masses
 from libs.lib_criteria import eval_uncert, uncert_strconvter, get_criteria, get_criteria_prob
 
@@ -78,7 +78,7 @@ def cont_NVTLangevin(
 
     if os.path.exists(trajectory):
         traj_temp = Trajectory(trajectory)
-        struc = traj_temp[-1]
+        struc = Structure.from_atoms(traj_temp[-1])
         MD_step_index = len(traj_temp)
         del traj_temp
 
@@ -168,6 +168,7 @@ def cont_NVTLangevin(
                     struc_init = atoms_read('start.in', format='aims')
                     # Make it supercell
                     struc = make_supercell(struc_init, inputs.supercell_init)
+                    struc = Structure.from_atoms(struc)
                     MaxwellBoltzmannDistribution(struc, temperature_K=temperature*1.5, force_temp=True)
 
         accept = '--         '

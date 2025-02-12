@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 from decimal import Decimal
 from scipy import special
-from libs.lib_util import single_print, timeit
+from libs.lib_util import single_print, timeit, Structure
 
 def eval_uncert(
-    struc_step, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
+    struc_step:Structure, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
 ):
     """Function [eval_uncert]
     Evalulate the absolute and relative uncertainties of
@@ -91,7 +91,7 @@ def eval_uncert(
         
 @timeit
 def eval_uncert_all(
-    struc_step, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
+    struc_step:Structure, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
 ):
     """Function [eval_uncert_E]
     Evalulate the average and standard deviation of predicted energies.
@@ -145,10 +145,9 @@ def eval_uncert_all(
     # Get the average and standard deviation of predicted potential energies
     # Get the average and standard deviation of the norm of predicted forces
     if harmonic_F:
-        from libs.lib_util import get_displacements, get_fc_ha, get_E_ha
-        displacements = get_displacements(struc_step.get_positions(), 'geometry.in.supercell')
-        F_ha = get_fc_ha(displacements, 'FORCE_CONSTANTS_remapped')
-        E_ha = get_E_ha(displacements, F_ha)
+        displacements = struc_step.get_displacements(struc_step.get_positions(), 'geometry.in.supercell')
+        F_ha = struc_step.get_fc_ha(displacements, 'FORCE_CONSTANTS_remapped')
+        E_ha = struc_step.get_E_ha(displacements, F_ha)
         Epot_step = Epot_step + E_ha
         F_step = F_step + F_ha
 
