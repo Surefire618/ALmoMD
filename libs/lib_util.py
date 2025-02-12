@@ -350,7 +350,7 @@ class Structure(Atoms):
                     index_totalmodel = index_nmodel * nstep + index_nstep
                     t = threading.Thread(
                         target=calculator[index_totalmodel].calculate,
-                        args=[self.ref_structure, ['energy', 'forces', 'stress']]
+                        args=[self.ref_structure,]
                     )
                     t_list.append(t)
 

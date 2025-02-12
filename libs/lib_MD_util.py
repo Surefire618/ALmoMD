@@ -32,12 +32,39 @@ def get_forces(
     """
 
     if type(calculator) == list:
+        GPU_threading = True
+        if GPU_threading:
+            # initialize threading for each model
+            t_list = []
+            for index_nmodel in range(nmodel):
+                for index_nstep in range(nstep):
+                    index_totalmodel = index_nmodel * nstep + index_nstep
+                    t = threading.Thread(
+                        target=calculator[index_totalmodel].calculate,
+                        args=[struc, ['forces']]
+                    )
+                    t_list.append(t)
+
+            # run each model
+            for t in t_list:
+                t.start()
+
+            # wait for another thread to finish
+            for t in t_list:
+                t.join()
+        else:
+            for index_nmodel in range(nmodel):
+                for index_nstep in range(nstep):
+                    index_totalmodel = index_nmodel * nstep + index_nstep
+                    calculator[index_totalmodel].calculate(struc)
+
         forces = []
         zndex = 0
         for index_nmodel in range(nmodel):
             for index_nstep in range(nstep):
-                struc.calc = calculator[zndex]
-                temp_force = struc.get_forces()
+                # struc.calc = calculator[zndex]
+                # temp_force = struc.get_forces()
+                temp_force = calculator[zndex].get_forces()
                 forces.append(temp_force)
                 zndex += 1
 
@@ -137,32 +164,32 @@ def get_MDinfo_temp(
     info_TE, info_PE, info_KE, info_T = [], [], [], []
     if signal_P:
         info_P = []
-    
-    GPU_threading = True
-    if GPU_threading:
-        # initialize threading for each model
-        t_list = []
-        for index_nmodel in range(nmodel):
-            for index_nstep in range(nstep):
-                index_totalmodel = index_nmodel * nstep + index_nstep
-                t = threading.Thread(
-                    target=calculator[index_totalmodel].calculate,
-                    args=[struc, ['energy', 'forces', 'stress']]
-                )
-                t_list.append(t)
 
-        # run each model
-        for t in t_list:
-            t.start()
-
-        # wait for another thread to finish
-        for t in t_list:
-            t.join()
-    else:
-        for index_nmodel in range(nmodel):
-            for index_nstep in range(nstep):
-                index_totalmodel = index_nmodel * nstep + index_nstep
-                calculator[index_totalmodel].calculate(struc)
+    # GPU_threading = True
+    # if GPU_threading:
+    #     # initialize threading for each model
+    #     t_list = []
+    #     for index_nmodel in range(nmodel):
+    #         for index_nstep in range(nstep):
+    #             index_totalmodel = index_nmodel * nstep + index_nstep
+    #             t = threading.Thread(
+    #                 target=calculator[index_totalmodel].calculate,
+    #                 args=[struc, ['energy', 'forces', 'stress']]
+    #             )
+    #             t_list.append(t)
+    #
+    #     # run each model
+    #     for t in t_list:
+    #         t.start()
+    #
+    #     # wait for another thread to finish
+    #     for t in t_list:
+    #         t.join()
+    # else:
+    #     for index_nmodel in range(nmodel):
+    #         for index_nstep in range(nstep):
+    #             index_totalmodel = index_nmodel * nstep + index_nstep
+    #             calculator[index_totalmodel].calculate(struc)
 
 
     zndex = 0
