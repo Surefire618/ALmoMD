@@ -161,7 +161,10 @@ def eval_uncert_all(
 
     prd_sigma = []
     for prd_F_step, prd_struc_step in zip(F_step, prd_struc):
-        prd_sigma.append(eval_sigma(prd_F_step, prd_struc_step, al_type))
+        prd_sigma.append(struc_step.eval_sigma(
+            struc_step_forces=prd_F_step,
+            struc_step_positions=prd_struc_step,
+            al_type=al_type))
 
     # Get the average and standard deviation of the norm of predicted forces
     sigma_step_avg = np.average(prd_sigma, axis=0)
