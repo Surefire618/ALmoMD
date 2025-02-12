@@ -340,32 +340,32 @@ class Structure(Atoms):
         if self.ref_structure is None:
             self.set_ref_structure(*args, **kwargs)
 
-        # calculate in multi threading
-        GPU_threading = True
-        if GPU_threading:
-            # initialize threading for each model
-            t_list = []
-            for index_nmodel in range(nmodel):
-                for index_nstep in range(nstep):
-                    index_totalmodel = index_nmodel * nstep + index_nstep
-                    t = threading.Thread(
-                        target=calculator[index_totalmodel].calculate,
-                        args=[self.ref_structure,]
-                    )
-                    t_list.append(t)
-
-            # run each model
-            for t in t_list:
-                t.start()
-
-            # wait for another thread to finish
-            for t in t_list:
-                t.join()
-        else:
-            for index_nmodel in range(nmodel):
-                for index_nstep in range(nstep):
-                    index_totalmodel = index_nmodel * nstep + index_nstep
-                    calculator[index_totalmodel].calculate(self.ref_structure)
+        # # calculate in multi threading
+        # GPU_threading = True
+        # if GPU_threading:
+        #     # initialize threading for each model
+        #     t_list = []
+        #     for index_nmodel in range(nmodel):
+        #         for index_nstep in range(nstep):
+        #             index_totalmodel = index_nmodel * nstep + index_nstep
+        #             t = threading.Thread(
+        #                 target=calculator[index_totalmodel].calculate,
+        #                 args=[self.ref_structure,]
+        #             )
+        #             t_list.append(t)
+        #
+        #     # run each model
+        #     for t in t_list:
+        #         t.start()
+        #
+        #     # wait for another thread to finish
+        #     for t in t_list:
+        #         t.join()
+        # else:
+        #     for index_nmodel in range(nmodel):
+        #         for index_nstep in range(nstep):
+        #             index_totalmodel = index_nmodel * nstep + index_nstep
+        #             calculator[index_totalmodel].calculate(self.ref_structure)
 
         # get the results
         e_ref = []
@@ -375,11 +375,11 @@ class Structure(Atoms):
             for index_nstep in range(nstep):
                 self.ref_structure.calc = calculator[zndex]
                 try:
-                    eatom_ref.append(np.array(calculator[zndex].get_potential_energies()))
+                    eatom_ref.append(np.array(self.ref_structure.get_potential_energies()))
                 except Exception as e:
                     # print(f"error encountered in get_potential_energies: {e}")
                     eatom_ref.append(np.array([]))
-                e_ref.append(calculator[zndex].get_potential_energy())
+                e_ref.append(self.ref_structure.get_potential_energy())
                 zndex += 1
 
         self.e_ref = np.array(e_ref)
