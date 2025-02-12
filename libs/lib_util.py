@@ -427,7 +427,7 @@ class Structure(Atoms):
         self.sigma = None
 
 
-@timeit
+# @timeit
 def eval_sigma(struc_step_forces, struc_step_positions, al_type):
     """Function [read_input_file]
     Read 'input.in' and assign variables.
@@ -477,7 +477,7 @@ def get_displacements(struc_step_positions, struc='geometry.in.supercell'):
     return displacements
 
 
-@timeit
+# @timeit
 def get_fc_ha(displacements, fc_file='FORCE_CONSTANTS_remapped'):
     # Get the harmonic force from the force constant of the phonon dispersion
     fc = np.loadtxt(fc_file)
@@ -486,7 +486,7 @@ def get_fc_ha(displacements, fc_file='FORCE_CONSTANTS_remapped'):
 
     return fc_ha.reshape(shape)
 
-@timeit
+# @timeit
 def get_E_ha(displacements, fc_ha):
     return displacements.flatten() @ -fc_ha.flatten() / 2
 

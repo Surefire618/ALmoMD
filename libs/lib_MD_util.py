@@ -7,7 +7,7 @@ from libs.lib_util import timeit
 
 torch.set_default_dtype(torch.float64)
 
-@timeit
+# @timeit
 def get_forces(
     struc, nstep, nmodel, calculator, harmonic_F, anharmonic_F
 ):
@@ -82,7 +82,7 @@ def get_forces(
 
     return force_avg
 
-@timeit
+# @timeit
 def get_stress(
     struc, nstep, nmodel, calculator
 ):
@@ -129,7 +129,7 @@ def get_stress(
 
     return stress_avg
 
-@timeit
+# @timeit
 def get_MDinfo_temp(
     struc, nstep, nmodel, calculator, harmonic_F, E_ref, signal_P = False
 ):
