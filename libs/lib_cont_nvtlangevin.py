@@ -221,6 +221,7 @@ def cont_NVTLangevin(
         
         # Step: x^n -> x^(n+1) - this applies constraints if any.
         struc.set_positions(position + timestep * velocity + rnd_pos)
+        struc.update_structure()
 
         # mpi_print(f'Step 10: {time.time()-time_init}', rank)
         # recalc velocities after RATTLE constraints are applied

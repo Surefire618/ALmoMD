@@ -419,13 +419,19 @@ class Structure(Atoms):
         self.sigma_a = force_a
 
     def eval_sigma(self, al_type, *args, **kwargs):
-        if not self.sigma:
-            self.set_sigma(*args, **kwargs)
+        self.set_sigma(*args, **kwargs)
 
         if al_type == 'sigma_max':
             return self.sigma_a
         else:
             return self.sigma
+
+    def update_structure(self, *args, **kwargs):
+        self.displacements:np.ndarray = None
+        self.force_ha:np.ndarray = None
+        self.e_ref = []
+        self.eatoms_ref = []
+        self.sigma = None
 
 
 @timeit
