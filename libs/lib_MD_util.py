@@ -1,3 +1,5 @@
+import threading
+#import time
 import numpy as np
 
 import torch
@@ -143,6 +145,37 @@ def get_MDinfo_temp(
     info_TE, info_PE, info_KE, info_T = [], [], [], []
     if signal_P:
         info_P = []
+    
+    GPU_threading = True
+    #start_time = time.time()
+    if GPU_threading:
+        # initialize threading for each model
+        t_list = []
+        for index_nmodel in range(nmodel):
+            for index_nstep in range(nstep):
+                index_totalmodel = index_nmodel * nstep + index_nstep
+                t = threading.Thread(
+                    target=calculator[index_totalmodel].calculate,
+                    args=[struc, ['energy', 'forces', 'stress']]
+                )
+                t_list.append(t)
+
+        # run each model
+        for t in t_list:
+            t.start()
+
+        # wait for another thread to finish
+        for t in t_list:
+            t.join()
+    else:
+        for index_nmodel in range(nmodel):
+            for index_nstep in range(nstep):
+                index_totalmodel = index_nmodel * nstep + index_nstep
+                calculator[index_totalmodel].calculate(struc)
+    #end_time = time.time()
+    #diff_time = end_time - start_time
+    #print(f"Calculation took {diff_time:.3f} seconds!")
+
 
     zndex = 0
     for index_nmodel in range(nmodel):
