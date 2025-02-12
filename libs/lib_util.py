@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import subprocess
+import time
 import numpy as np
 
 from ase        import Atoms
@@ -23,6 +24,14 @@ from ase.data   import atomic_numbers
 #     if rank == 0:
 #         print(string)
 #     sys.stdout.flush() # Instant printing
+
+def timeit(f):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        ret = f(*args, **kwargs)
+        print(f"{f.__name__} runs for {time.time() - start:.3f} s")
+        return ret
+    return wrapper
 
 
 def single_print(string):
@@ -222,7 +231,7 @@ def read_aims(file_name):
     
     return atom, total_E, np.array(forces)
 
-
+@timeit
 def eval_sigma(struc_step_forces, struc_step_positions, al_type):
     """Function [read_input_file]
     Read 'input.in' and assign variables.
@@ -278,7 +287,7 @@ def get_displacements(struc_step_positions, struc='geometry.in.supercell'):
     return displacements
 
 
-
+@timeit
 def get_fc_ha(displacements, fc_file='FORCE_CONSTANTS_remapped'):
     # Get the harmonic force from the force constant of the phonon dispersion
     fc = np.loadtxt(fc_file)
@@ -287,7 +296,7 @@ def get_fc_ha(displacements, fc_file='FORCE_CONSTANTS_remapped'):
 
     return fc_ha.reshape(shape)
 
-
+@timeit
 def get_E_ha(displacements, fc_ha):
     return displacements.flatten() @ -fc_ha.flatten() / 2
 
@@ -412,3 +421,5 @@ def read_input_file(file_path):
                 variables[name] = value
 
     return variables
+
+

@@ -4,8 +4,7 @@ import numpy as np
 import pandas as pd
 from decimal import Decimal
 from scipy import special
-from libs.lib_util import single_print
-
+from libs.lib_util import single_print, timeit
 
 def eval_uncert(
     struc_step, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
@@ -90,7 +89,7 @@ def eval_uncert(
     else:
         sys.exit("You need to set al_type.")
         
-
+@timeit
 def eval_uncert_all(
     struc_step, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
 ):
@@ -133,14 +132,13 @@ def eval_uncert_all(
     # Get predicted potential and total energies shifted by E_ref (ground state energy)
     for index_nmodel in range(nmodel):
         for index_nstep in range(nstep):
-            struc_step.calc = calculator[zndex]
 
             if al_type == 'energy_max':
-                Epot_step.append(np.array(struc_step.get_potential_energies()) - E_ref[1][zndex])
+                Epot_step.append(np.array(calculator[zndex].get_potential_energies()) - E_ref[1][zndex])
             else:
-                Epot_step.append(struc_step.get_potential_energy() - E_ref[0][zndex])
+                Epot_step.append(calculator[zndex].get_potential_energy() - E_ref[0][zndex])
 
-            F_step.append(struc_step.get_forces())
+            F_step.append(calculator[zndex].get_forces())
             prd_struc.append(struc_step.get_positions())
             zndex += 1
 
@@ -172,7 +170,7 @@ def eval_uncert_all(
 
     return Epot_step_avg, Epot_step_std, F_step_norm_avg, F_step_norm_std, sigma_step_avg, sigma_step_std
 
-
+@timeit
 def get_criteria(
     temperature, pressure, index, steps_init, al_type
 ):
@@ -280,7 +278,7 @@ def get_criteria(
 
     return criteria
 
-
+@timeit
 def get_result(inputs, get_type):
     """Function [get_result]
     Get average and standard deviation of absolute and relative undertainty
@@ -385,7 +383,7 @@ def uncert_strconvter(value):
     
     return '{:.5e}'.format(Decimal(value))
     
-
+@timeit
 def get_criteria_prob(inputs, Epot_step, uncerts, criteria):
     """Function [get_criteria_prob]
     Utilize the average and standard deviation obtained from 'get_criteria'

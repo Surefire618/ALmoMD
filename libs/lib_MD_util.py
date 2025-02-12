@@ -1,10 +1,13 @@
 import threading
-#import time
 import numpy as np
 
 import torch
+
+from libs.lib_util import timeit
+
 torch.set_default_dtype(torch.float64)
 
+@timeit
 def get_forces(
     struc, nstep, nmodel, calculator, harmonic_F, anharmonic_F
 ):
@@ -28,42 +31,31 @@ def get_forces(
         Averaged forces across trained models
     """
 
-    # time_init = time.time()
-
-    # mpi_print(f'Step 10-a: {time.time()-time_init}', rank)
     if type(calculator) == list:
         forces = []
         zndex = 0
         for index_nmodel in range(nmodel):
             for index_nstep in range(nstep):
-                # mpi_print(f'Step 10-a1 first {rank}: {time.time()-time_init}', rank)
                 struc.calc = calculator[zndex]
-                # mpi_print(f'Step 10-a1 second {rank}: {time.time()-time_init}', rank)
                 temp_force = struc.get_forces()
-                # mpi_print(f'Step 10-a1 third {rank}: {time.time()-time_init}', rank)
                 forces.append(temp_force)
-                # mpi_print(f'Step 10-a1 last {rank}: {time.time()-time_init}', rank)
                 zndex += 1
 
-        # mpi_print(f'Step 10-b: {time.time()-time_init}', rank)
         if harmonic_F and anharmonic_F:
             from libs.lib_util import get_displacements, get_fc_ha
             displacements = get_displacements(struc.get_positions(), 'geometry.in.supercell')
             F_ha = get_fc_ha(displacements, 'FORCE_CONSTANTS_remapped')
             forces = forces + F_ha
 
-        # mpi_print(f'Step 10-c: {time.time()-time_init}', rank)
         force_avg = np.average(forces, axis=0)
 
     else:
         struc.calc = calculator
         forces_avg = struc.get_forces(md=True)
 
-    # mpi_print(f'Step 10-d: {time.time()-time_init}', rank)
-
     return force_avg
 
-
+@timeit
 def get_stress(
     struc, nstep, nmodel, calculator
 ):
@@ -110,7 +102,7 @@ def get_stress(
 
     return stress_avg
 
-
+@timeit
 def get_MDinfo_temp(
     struc, nstep, nmodel, calculator, harmonic_F, E_ref, signal_P = False
 ):
@@ -147,7 +139,6 @@ def get_MDinfo_temp(
         info_P = []
     
     GPU_threading = True
-    #start_time = time.time()
     if GPU_threading:
         # initialize threading for each model
         t_list = []
@@ -172,9 +163,6 @@ def get_MDinfo_temp(
             for index_nstep in range(nstep):
                 index_totalmodel = index_nmodel * nstep + index_nstep
                 calculator[index_totalmodel].calculate(struc)
-    #end_time = time.time()
-    #diff_time = end_time - start_time
-    #print(f"Calculation took {diff_time:.3f} seconds!")
 
 
     zndex = 0
