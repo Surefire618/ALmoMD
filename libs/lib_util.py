@@ -283,11 +283,9 @@ class Structure(Atoms):
             velocities=atoms.get_velocities(),
         )
 
-    @timeit
     def set_ref_structure(self, filename="geometry.in.supercell", *args, **kwargs):
         self.ref_structure = read_aims_geometry(filename)
 
-    @timeit
     def set_displacements(self, *args, **kwargs):
         if self.ref_structure is None:
             self.set_ref_structure(*args, **kwargs)
@@ -307,11 +305,9 @@ class Structure(Atoms):
             self.set_displacements(*args, **kwargs)
         return self.displacements
 
-    @timeit
     def set_force_constants(self, filename="FORCE_CONSTANTS_remapped", *args, **kwargs):
         self.force_constants = np.loadtxt(filename)
 
-    @timeit
     def set_fc_ha(self, *args, **kwargs):
         if self.displacements is None:
             self.set_displacements()
@@ -327,7 +323,6 @@ class Structure(Atoms):
             self.set_fc_ha(*args, **kwargs)
         return self.force_ha
 
-    @timeit
     def set_E_ha(self, *args, **kwargs):
         if self.displacements is None:
             self.set_displacements(*args, **kwargs)
@@ -341,7 +336,6 @@ class Structure(Atoms):
             self.set_E_ha(*args, **kwargs)
         return self.e_ha
 
-    @timeit
     def set_E_ref(self, nmodel, nstep, calculator, *args, **kwargs):
         if self.ref_structure is None:
             self.set_ref_structure(*args, **kwargs)
@@ -397,7 +391,6 @@ class Structure(Atoms):
 
         return [self.e_ref, self.eatom_ref]
 
-    @timeit
     def set_sigma(self, struc_step_forces, **kwargs): # FIXME struc_step_forces
         if self.ref_structure is None:
             self.set_ref_structure()
