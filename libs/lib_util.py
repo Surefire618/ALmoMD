@@ -461,7 +461,7 @@ def eval_sigma(struc_step_forces, struc_step_positions, al_type):
 
 def get_displacements(struc_step_positions, struc='geometry.in.supercell'):
     # Read the ground state structure with the primitive cell
-    ref_struc_super = read_aims(struc)
+    ref_struc_super = read_aims_geometry(struc)
 
     # Get the structral information
     ref_cell = np.asarray(ref_struc_super.get_cell())
