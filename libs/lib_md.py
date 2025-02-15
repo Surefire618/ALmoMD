@@ -182,7 +182,7 @@ def cont_runMD(
         from libs.lib_cont_nvtlangevin import cont_NVTLangevin
         cont_NVTLangevin(
             inputs = inputs,
-            struc = struc,
+            struc = Structure.from_atoms(struc),
             timestep = inputs.timestep * units.fs,
             temperature = inputs.temperature * units.kB,
             calculator = calculator,
