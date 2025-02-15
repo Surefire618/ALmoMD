@@ -3,7 +3,7 @@ import ase.units as units
 import os
 import pandas as pd
 
-from libs.lib_util import single_print
+from libs.lib_util import single_print, Structure
 from libs.lib_nvtlangevin import NVTLangevin
 from libs.lib_nvtlangevin_meta import NVTLangevin_meta
 from libs.lib_nptisoiso import NPTisoiso
@@ -61,7 +61,7 @@ def runMD(
 
     if inputs.ensemble == 'NVTLangevin':
         NVTLangevin(
-            struc = struc,
+            struc = Structure.from_atoms(struc),
             timestep = inputs.timestep * units.fs,
             temperature = inputs.temperature * units.kB,
             friction = inputs.friction,

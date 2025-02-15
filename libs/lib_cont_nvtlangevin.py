@@ -17,7 +17,7 @@ import torch
 torch.set_default_dtype(torch.float64)
 
 def cont_NVTLangevin(
-    inputs, struc, timestep, temperature, calculator, E_ref,
+    inputs, struc:Structure, timestep, temperature, calculator, E_ref,
     MD_index, MD_step_index, signal_uncert=False, signal_append=True, fix_com=True,
 ):
     """Function [NVTLangevin]
