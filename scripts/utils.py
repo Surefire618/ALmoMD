@@ -2,6 +2,7 @@ import os
 import re
 import sys
 from vibes import son
+from vibes.trajectory import reader
 import random
 import argparse
 import collections
@@ -223,9 +224,18 @@ def split_son(num_split, E_gs, harmonic_F=False):
     """
     from libs.lib_util     import eval_sigma
 
+    # Check trajectory.son or trajectory.nc path exists
+    if os.path.exists("trajectory.son"):
+        trajname = "trajectory.son"
+    elif os.path.exists("trajectory.nc"):
+        trajname = "trajectory.nc"
+    else:
+        trajname = "trajectory.son"
+        single_print(f'[split_son]\tWarning! {trajname} file not found!')
+
     # Print the head
     output_init('split_son', version)
-    single_print(f'[split_son]\tInitiate splitting trajectory.son')
+    single_print(f'[split_son]\tInitiate splitting {trajname}')
 
     if harmonic_F:
         single_print(f'[split_son]\tharmoic_F = True: Harmonic term will be excluded')
@@ -234,9 +244,10 @@ def split_son(num_split, E_gs, harmonic_F=False):
     E_gs = str(E_gs)
     E_gs = eval(E_gs)
 
-    single_print(f'[split_son]\tRead trajectory.son file')
-    # Read trajectory.son file
-    metadata, data = son.load('trajectory.son')
+    single_print(f'[split_son]\tRead {trajname} file')
+    # Read trajectory file
+    data = reader(trajname)
+    metadata = data.metadata
 
     # Randomly sample testing data with a total count of num_split.
     test_data = random.sample(data, num_split)
