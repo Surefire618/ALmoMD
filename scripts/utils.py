@@ -2,7 +2,8 @@ import os
 import re
 import sys
 from vibes import son
-from vibes.trajectory import reader
+from vibes.trajectory import reader, Trajectory
+from vibes.helpers.converters import atoms2dict
 import random
 import argparse
 import collections
@@ -15,6 +16,15 @@ from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
 from libs.lib_util import check_mkdir, rm_file, single_print, output_init
 
 version = '0.2.0'
+
+def traj2son(traj: Trajectory) -> list[dict]:
+    """Convert Trajectory to list of dict for son.dump
+    """
+    data = []
+    for atoms in traj:
+        atomsdict = {"atoms": atoms2dict(atoms), "calculator": atoms.calc.results}
+        data.append(atomsdict)
+    return data
 
 def aims2son(temperature):
     """Function [aims2son]
@@ -246,13 +256,23 @@ def split_son(num_split, E_gs, harmonic_F=False):
 
     single_print(f'[split_son]\tRead {trajname} file')
     # Read trajectory file
-    data = reader(trajname)
-    metadata = data.metadata
+    _data = reader(trajname)
+    metadata = _data.metadata
 
-    # Randomly sample testing data with a total count of num_split.
-    test_data = random.sample(data, num_split)
-    # Extract the training data that is not included in the testing data
-    train_data = [d for d in data if d not in test_data]
+    # Convert Trajectory object to list of atoms dictionary for son.dump()
+    if isinstance(_data[0], Atoms):
+        data = traj2son(_data)
+    else:
+        data = _data
+
+    # Randomly sample training and testing data index with a total count of num_split.
+    data_index = list(range(len(data)))
+    test_index = random.sample(data_index, num_split)
+    train_index = [id for id in data_index if id not in test_index]
+
+    # Extract the training and testing data using data index
+    test_data = [data[id] for id in test_index]
+    train_data = [data[id] for id in train_index]
     
     # Check the existance of trajectory_test.son and trajectory_train.son files,
     # because it is annoying when we mixuse these files with different sampling
