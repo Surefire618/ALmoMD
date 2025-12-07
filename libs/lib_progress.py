@@ -330,14 +330,22 @@ def check_index(inputs, calc_step='cont'):
 
     total_index = 0 # Initialize with a low value
     for item in contents:
-        if os.path.isdir(os.path.join(dir_path, item)):
-            parts = item.split('_')
-            if len(parts) >= 2:
-                try:
-                    number = int(parts[1])
-                    total_index = max(total_index, number)
-                except ValueError:
-                    pass
+        item_path = os.path.join(dir_path, item)
+
+        # Skip anything that is not a directory
+        if not os.path.isdir(item_path):
+            continue
+        # Skip empty directories (often created by failed DFT jobs)
+        if not os.listdir(item_path):
+            continue
+
+        parts = item.split('_')
+        if len(parts) >= 2:
+            try:
+                number = int(parts[1])
+                total_index = max(total_index, number)
+            except ValueError:
+                pass
 
     if calc_step == 'gen' or calc_step == 'dft_rand':
         total_index += 1
