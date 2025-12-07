@@ -309,36 +309,35 @@ def get_result(inputs, get_type):
         index_col=False, delimiter='\t'
         )
 
-    result_print = ''
     # Get their average and standard deviation
     if inputs.al_type == 'energy' or inputs.al_type == 'energy_max':
-        UncerAbs_E_list = uncert_data.loc[:,'UncertAbs_E'].values
-        UncerRel_E_list = uncert_data.loc[:,'UncertRel_E'].values
-        criteria_UncertAbs_E_avg_all = uncert_average(UncerAbs_E_list[:])
-        criteria_UncertRel_E_avg_all = uncert_average(UncerRel_E_list[:])
-        result_print +=   '\t' + uncert_strconvter(criteria_UncertRel_E_avg_all)\
-                        + '\t' + uncert_strconvter(criteria_UncertAbs_E_avg_all)
+        al_name = 'E'
 
-    if inputs.al_type == 'force' or inputs.al_type == 'force_max':
-        UncerAbs_F_list = uncert_data.loc[:,'UncertAbs_F'].values
-        UncerRel_F_list = uncert_data.loc[:,'UncertRel_F'].values
-        criteria_UncertAbs_F_avg_all = uncert_average(UncerAbs_F_list[:])
-        criteria_UncertRel_F_avg_all = uncert_average(UncerRel_F_list[:])
-        result_print +=   '\t' + uncert_strconvter(criteria_UncertRel_F_avg_all)\
-                        + '\t' + uncert_strconvter(criteria_UncertAbs_F_avg_all)
+    elif inputs.al_type == 'force' or inputs.al_type == 'force_max':
+        al_name = 'F'
 
-    if inputs.al_type == 'sigma' or inputs.al_type == 'sigma_max':
-        UncerAbs_S_list = uncert_data.loc[:,'UncertAbs_S'].values
-        UncerRel_S_list = uncert_data.loc[:,'UncertRel_S'].values
-        criteria_UncertAbs_S_avg_all = uncert_average(UncerAbs_S_list[:])
-        criteria_UncertRel_S_avg_all = uncert_average(UncerRel_S_list[:])
-        result_print +=   '\t' + uncert_strconvter(criteria_UncertAbs_S_avg_all)\
-                        + '\t' + uncert_strconvter(criteria_UncertRel_S_avg_all)
+    elif inputs.al_type == 'sigma' or inputs.al_type == 'sigma_max':
+        al_name = 'S'
+
+    else:
+        al_name = None
+
+    uncertabs_key = f"UncertAbs_{al_name}"
+    uncertrel_key = f"UncertRel_{al_name}"
+
+    UncerAbs_list = uncert_data.loc[:,uncertabs_key].values
+    UncerRel_list = uncert_data.loc[:,uncertrel_key].values
+    criteria_UncertAbs_avg_all = uncert_average(UncerAbs_list[:])
+    criteria_UncertRel_avg_all = uncert_average(UncerRel_list[:])
 
     # Record the average values
-    with open('result.txt', 'a') as criteriafile:
-        criteriafile.write(result_print+ '\n')
-
+    results = pd.read_csv('result.txt', index_col=False, delimiter='\t')
+    index = results[results.Iteration == get_index].index
+    criteria_uncertabs_key = f"Un_Abs_{al_name}_avg_a"
+    criteria_uncertrel_key = f"Un_Rel_{al_name}_avg_a"
+    results.loc[index, criteria_uncertabs_key] = criteria_UncertAbs_avg_all
+    results.loc[index, criteria_uncertrel_key] = criteria_UncertRel_avg_all
+    results.to_csv("result.txt", index=False, sep='\t', float_format='%.5e')
 
     
 def uncert_average(itemlist):
