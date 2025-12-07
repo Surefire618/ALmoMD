@@ -343,7 +343,7 @@ def execute_train_job(
                         writing_input.write(job_item)
 
             # Submit the job scripts
-            # subprocess.run([inputs.job_command, job_script]);
+            subprocess.run([inputs.job_command, job_script]);
             os.chdir(currentpath)
 
     elif inputs.MLIP == 'so3krates':

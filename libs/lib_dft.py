@@ -160,7 +160,7 @@ def run_DFT(inputs):
                         writing_input.write('cd '+value_execute_cwd+'\n')
                         writing_input.write(inputs.vibes_command+'\n')
             # If the previous calculation is not finished, rerun it
-            # subprocess.run([inputs.job_command, job_script])
+            subprocess.run([inputs.job_command, job_script])
             # os.system(f'{inputs.job_command} {job_script}')
 
     # Move back to the original position
