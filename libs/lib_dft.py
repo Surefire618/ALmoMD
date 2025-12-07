@@ -140,7 +140,9 @@ def run_DFT(inputs):
                         os.chdir(calcpath_cwd)
                 else:
                     # Get FHI-aims inputs from the template folder
-                    aims_write('geometry.in', traj_DFT[jtem])
+                    atoms = traj_DFT[jtem].copy()
+                    atoms.wrap()
+                    jtoms.write("geometry.in", format="aims")
                     subprocess.run(['cp', '../../../DFT_INPUTS/aims.in', '.'])
                     # Collect the current calculation path
                     execute_cwd.append(os.getcwd())
