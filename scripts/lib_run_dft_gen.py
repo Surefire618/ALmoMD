@@ -80,5 +80,6 @@ def run_dft_gen(inputs):
     # if inputs.rank == 0:
     #     job_dependency('cont', inputs.num_mdl_calc)
     # inputs.comm.Barrier()
+    job_dependency('cont', inputs.num_mdl_calc)
 
     single_print(f'[gen]\t!! Finish the training data generation: Iteration {inputs.index}')
