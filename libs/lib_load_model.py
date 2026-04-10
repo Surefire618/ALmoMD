@@ -2,6 +2,75 @@ import os
 import sys
 from libs.lib_util     import single_print
 
+
+def ensemble_calculate(calculators, atoms):
+    """Run an ensemble of NequIPCalculators on `atoms`, sharing the
+    AtomicData (neighbor list + type mapping) across all of them.
+
+    Bypasses ASE's per-call Calculator.calculate so the GIL-held
+    AtomicData.from_ase / TypeMapper pipeline runs once instead of N
+    times. Each calculator's `results` dict and `atoms` snapshot are
+    populated as if Calculator.calculate had been called, so any later
+    get_potential_energy / get_forces / get_potential_energies /
+    get_stress on the same atoms is a cache hit.
+
+    All calculators must share the same r_max and transform; this is
+    asserted in load_model after the calculators are built.
+    """
+    import torch
+    from nequip.data import AtomicData, AtomicDataDict
+    from ase.stress import full_3x3_to_voigt_6_stress
+
+    ref = calculators[0]
+
+    data = AtomicData.from_ase(atoms=atoms, r_max=ref.r_max)
+    for k in AtomicDataDict.ALL_ENERGY_KEYS:
+        if k in data:
+            del data[k]
+    data = ref.transform(data)
+    data_cpu = AtomicData.to_AtomicDataDict(data)
+
+    energies = []
+    forces = []
+    for calc in calculators:
+        data_dev = {
+            k: (v.to(calc.device) if torch.is_tensor(v) else v)
+            for k, v in data_cpu.items()
+        }
+        out = calc.model(data_dev)
+
+        results = {}
+        if AtomicDataDict.TOTAL_ENERGY_KEY in out:
+            results['energy'] = calc.energy_units_to_eV * (
+                out[AtomicDataDict.TOTAL_ENERGY_KEY]
+                .detach().cpu().numpy().reshape(tuple())
+            )
+            results['free_energy'] = results['energy']
+        if AtomicDataDict.PER_ATOM_ENERGY_KEY in out:
+            results['energies'] = calc.energy_units_to_eV * (
+                out[AtomicDataDict.PER_ATOM_ENERGY_KEY]
+                .detach().squeeze(-1).cpu().numpy()
+            )
+        if AtomicDataDict.FORCE_KEY in out:
+            results['forces'] = (
+                calc.energy_units_to_eV / calc.length_units_to_A
+            ) * out[AtomicDataDict.FORCE_KEY].detach().cpu().numpy()
+        if AtomicDataDict.STRESS_KEY in out:
+            stress = out[AtomicDataDict.STRESS_KEY].detach().cpu().numpy()
+            stress = stress.reshape(3, 3) * (
+                calc.energy_units_to_eV / calc.length_units_to_A ** 3
+            )
+            results['stress'] = full_3x3_to_voigt_6_stress(stress)
+
+        calc.results = results
+        calc.atoms = atoms.copy()
+
+        energies.append(float(results['energy']))
+        forces.append(results['forces'])
+
+    return energies, forces
+
+
 def load_model(inputs):
 
     # Set the path to folders storing the training data for NequIP
@@ -57,6 +126,17 @@ def load_model(inputs):
                     # If there is no model, turn on the termination signal
                     single_print(f'\t\tCannot find the model: {dply_model}')
                     signal = 1
+
+        # ensemble_calculate shares one neighbor list across the ensemble,
+        # which is only valid if every model has the same r_max and the
+        # same TypeMapper transform.
+        if signal == 0 and len(inputs.calc_MLIP) > 1:
+            ref = inputs.calc_MLIP[0]
+            for c in inputs.calc_MLIP[1:]:
+                assert c.r_max == ref.r_max, \
+                    'Ensemble models have different r_max; ensemble_calculate cannot share neighbor list'
+                assert type(c.transform) is type(ref.transform), \
+                    'Ensemble models have different TypeMapper types'
 
     elif inputs.MLIP == 'so3krates':
         from glp import instantiate
