@@ -89,7 +89,7 @@ def eval_uncert(
     else:
         sys.exit("You need to set al_type.")
         
-# @timeit
+@timeit
 def eval_uncert_all(
     struc_step:Structure, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
 ):
@@ -172,7 +172,7 @@ def eval_uncert_all(
 
     return Epot_step_avg, Epot_step_std, F_step_norm_avg, F_step_norm_std, sigma_step_avg, sigma_step_std
 
-# @timeit
+@timeit
 def get_criteria(
     temperature, pressure, index, steps_init, al_type
 ):
@@ -280,7 +280,7 @@ def get_criteria(
 
     return criteria
 
-# @timeit
+@timeit
 def get_result(inputs, get_type):
     """Function [get_result]
     Get average and standard deviation of absolute and relative undertainty
@@ -384,7 +384,7 @@ def uncert_strconvter(value):
     
     return '{:.5e}'.format(Decimal(value))
     
-# @timeit
+@timeit
 def get_criteria_prob(inputs, Epot_step, uncerts, criteria):
     """Function [get_criteria_prob]
     Utilize the average and standard deviation obtained from 'get_criteria'
