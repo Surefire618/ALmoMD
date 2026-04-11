@@ -75,11 +75,10 @@ def run_dft_gen(inputs):
     single_print(f'[gen]\tSubmit the NequIP training processes')
     execute_train_job(inputs, total_ntrain, total_nval, workpath)
 
-    # Submit a job-dependence to execute run_dft_cont after the NequIP training
-    # mpi_print(f'[gen]\tSubmit a job for cont with dependency', inputs.rank)
-    # if inputs.rank == 0:
-    #     job_dependency('cont', inputs.num_mdl_calc)
-    # inputs.comm.Barrier()
-    job_dependency('cont', inputs.num_mdl_calc)
+    # Auto-chaining disabled by default. Uncomment to have almomd submit
+    # the next job-cont.slurm with an sbatch dependency on the training
+    # jobs just submitted above. Only useful when the auto-submissions in
+    # lib_dft.run_DFT and lib_train.execute_train_job are also enabled.
+    # job_dependency('cont', inputs.num_mdl_calc)
 
     single_print(f'[gen]\t!! Finish the training data generation: Iteration {inputs.index}')
