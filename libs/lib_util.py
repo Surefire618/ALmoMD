@@ -27,12 +27,39 @@ from ase.geometry import find_mic
 #         print(string)
 #     sys.stdout.flush() # Instant printing
 
+_TIMING_ENABLED = os.environ.get('ALMOMD_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+
 def timeit(f):
+    """Print wall-clock runtime of `f` when ALMOMD_TIMING=1 is set.
+
+    Off by default so decorated hot-path functions carry zero runtime
+    cost in production. Enable with e.g. `ALMOMD_TIMING=1 almomd cont`.
+    Uses time.perf_counter (higher resolution than time.time) and calls
+    torch.cuda.synchronize() if available so GPU work is not hidden
+    behind an early return.
+    """
+    if not _TIMING_ENABLED:
+        return f
+
+    import functools
+
+    try:
+        import torch
+        _sync = torch.cuda.synchronize if torch.cuda.is_available() else (lambda: None)
+    except ImportError:
+        _sync = lambda: None
+
+    @functools.wraps(f)
     def wrapper(*args, **kwargs):
-        start = time.time()
+        _sync()
+        start = time.perf_counter()
         ret = f(*args, **kwargs)
-        print(f"{f.__name__} runs for {time.time() - start:.3f} s")
+        _sync()
+        print(f"{f.__name__} runs for {time.perf_counter() - start:.3f} s",
+              flush=True)
         return ret
+
     return wrapper
 
 
