@@ -48,9 +48,31 @@ def impl_direct(calculators, struc):
 # ---------------------------------------------------------------------------
 # Implementation 3: threaded shared neighbor list (current code)
 # ---------------------------------------------------------------------------
-def impl_threaded(calculators, struc):
+def impl_threaded_shared(calculators, struc):
     from libs.lib_load_model import ensemble_calculate
-    return ensemble_calculate(calculators, struc)
+    results = ensemble_calculate(calculators, struc)
+    energies = [float(r['energy']) for r in results]
+    forces   = [r['forces'] for r in results]
+    return energies, forces
+
+
+# ---------------------------------------------------------------------------
+# Implementation 4: threaded, NO shared neighbor list (stripped, no nequip dep)
+# ---------------------------------------------------------------------------
+def impl_threaded_stripped(calculators, struc):
+    import threading
+    atoms_copies = [struc.copy() for _ in calculators]
+    threads = [
+        threading.Thread(target=calc.calculate, args=(ac,))
+        for calc, ac in zip(calculators, atoms_copies)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    energies = [float(calc.results['energy']) for calc in calculators]
+    forces   = [calc.results['forces'] for calc in calculators]
+    return energies, forces
 
 
 # ---------------------------------------------------------------------------
@@ -124,16 +146,19 @@ def main():
 
     print(f'\nBenchmark: {args.nwarmup} warmup + {args.nreps} timed reps')
     print('-' * 72)
-    t_orig     = bench('original',  impl_original, calculators, struc, args.nwarmup, args.nreps)
-    t_direct   = bench('direct',    impl_direct,   calculators, struc, args.nwarmup, args.nreps)
-    t_threaded = bench('threaded',  impl_threaded, calculators, struc, args.nwarmup, args.nreps)
+    t_orig     = bench('original',     impl_original,         calculators, struc, args.nwarmup, args.nreps)
+    t_direct   = bench('direct',       impl_direct,           calculators, struc, args.nwarmup, args.nreps)
+    t_shared   = bench('thr_shared',   impl_threaded_shared,  calculators, struc, args.nwarmup, args.nreps)
+    t_stripped = bench('thr_stripped', impl_threaded_stripped, calculators, struc, args.nwarmup, args.nreps)
     print('-' * 72)
-    print(f'  speedup threaded vs original: {t_orig.mean()/t_threaded.mean():.3f}x')
-    print(f'  speedup threaded vs direct:   {t_direct.mean()/t_threaded.mean():.3f}x')
+    print(f'  speedup thr_shared   vs original: {t_orig.mean()/t_shared.mean():.3f}x')
+    print(f'  speedup thr_stripped vs original: {t_orig.mean()/t_stripped.mean():.3f}x')
+    print(f'  thr_stripped vs thr_shared:       {t_shared.mean()/t_stripped.mean():.3f}x  '
+          f'(>1 means stripped wins, <1 means shared wins)')
 
     # sanity-check: forces agree across implementations
     _, f1 = impl_original(calculators, struc)
-    _, f2 = impl_threaded(calculators, struc)
+    _, f2 = impl_threaded_stripped(calculators, struc)
     for i, (a, b) in enumerate(zip(f1, f2)):
         diff = np.max(np.abs(np.array(a) - np.array(b)))
         if diff > 1e-6:

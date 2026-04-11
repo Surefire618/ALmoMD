@@ -2,41 +2,31 @@ import os
 import sys
 import threading
 import warnings
+
 from libs.lib_util import single_print
 
 
-
 def ensemble_calculate(calculators, atoms):
-    """Run every NequIPCalculator on `atoms` sharing one neighbor list.
+    """Run all NequIPCalculators on `atoms` in parallel threads.
 
-    The neighbor list is built once from the current atoms and reused
-    across all ensemble models for this single call. It is rebuilt on
-    every call, so successive MD steps see fresh lists built from the
-    updated positions -- identical freshness to the pre-patch code,
-    just without the N-way redundancy.
+    Build the neighbor list once and clone it per model; requires every
+    calculator to share r_max (asserted in load_model). Each thread
+    runs on its own atoms.copy() so nequip's calculate() handles result
+    extraction with no race on the shared atoms object.
 
-    Each calculator runs in its own thread so that models placed on
-    different GPU devices execute their forward passes concurrently.
-    Each thread receives its own copy of `atoms` to avoid shared-state
-    races. The GIL is released during CUDA kernel launches, so threads
-    on separate devices run truly in parallel. On a single device the
-    kernels are still serialized by CUDA, but there is no regression
-    versus sequential execution.
+    On multi-GPU runs (models on cuda:0..N), forward passes run truly
+    in parallel. On a single GPU kernels are still serialized by CUDA,
+    but there is no regression versus a sequential loop.
 
-    Delegates all result extraction to each calculator's own
-    calculate(), so unit conversions, output key handling, stress
-    Voigt conversion, and ASE cache writeback stay inside nequip and
-    track upstream changes automatically.
-
-    All calculators must share r_max and transform; asserted in
-    load_model after the calculators are built.
-
-    Returns (energies, forces) as parallel lists.
+    Returns a list of per-model results dicts, one per calculator in
+    the same order as `calculators`. Each dict holds whatever keys the
+    underlying nequip calculator populated (energy, free_energy,
+    energies, forces, stress, stresses, ...).
     """
-    import threading
-
     from nequip.data import AtomicData
 
+    # Build the neighbor list once; every call to from_ase inside the
+    # threaded calculate() invocations returns a fresh clone.
     prebuilt = AtomicData.from_ase(atoms=atoms, r_max=calculators[0].r_max)
     original = AtomicData.__dict__['from_ase']
     call_count = 0
@@ -62,18 +52,17 @@ def ensemble_calculate(calculators, atoms):
     finally:
         AtomicData.from_ase = original
 
+    # Warn if nequip stopped routing through from_ase upstream: the
+    # neighbor-list sharing silently stops working in that case.
     if call_count < len(calculators):
         warnings.warn(
-            f'ensemble_calculate: AtomicData.from_ase was called '
-            f'{call_count} times, expected {len(calculators)}. Upstream '
-            f'nequip may have stopped calling from_ase in calculate; '
-            f'neighbor-list dedup is no longer effective.',
+            f'ensemble_calculate: AtomicData.from_ase called {call_count} '
+            f'times, expected {len(calculators)}. nequip internals may '
+            f'have changed; neighbor-list sharing is no longer effective.',
             RuntimeWarning,
         )
 
-    energies = [float(calc.results['energy']) for calc in calculators]
-    forces = [calc.results['forces'] for calc in calculators]
-    return energies, forces
+    return [calc.results for calc in calculators]
 
 
 def load_model(inputs):

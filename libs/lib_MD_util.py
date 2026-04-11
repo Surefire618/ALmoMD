@@ -33,7 +33,8 @@ def get_forces(
 
     if type(calculator) == list:
         from libs.lib_load_model import ensemble_calculate
-        _, forces = ensemble_calculate(calculator, struc)
+        results = ensemble_calculate(calculator, struc)
+        forces = [r['forces'] for r in results]
 
         if harmonic_F and anharmonic_F:
             from libs.lib_util import get_displacements, get_fc_ha
