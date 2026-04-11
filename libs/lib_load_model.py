@@ -1,46 +1,9 @@
-import contextlib
 import os
 import sys
+import threading
 import warnings
-from libs.lib_util     import single_print
+from libs.lib_util import single_print
 
-
-@contextlib.contextmanager
-def shared_neighbor_list(atoms, r_max, expected_calls):
-    """Temporarily replace AtomicData.from_ase with a cached version
-    that returns a clone of a single prebuilt instance.
-
-    Scoped to one MD step: the prebuilt is built from the atoms passed
-    in, lives only inside the with block, and is dropped on exit. The
-    next call builds a fresh one from the updated positions.
-
-    Single-threaded only -- AtomicData.from_ase is a module global.
-    """
-    from nequip.data import AtomicData
-
-    prebuilt = AtomicData.from_ase(atoms=atoms, r_max=r_max)
-    original = AtomicData.__dict__['from_ase']
-    call_count = 0
-
-    def _cached(atoms=None, r_max=None, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        return prebuilt.clone()
-
-    AtomicData.from_ase = _cached
-    try:
-        yield
-    finally:
-        AtomicData.from_ase = original
-
-    if call_count < expected_calls:
-        warnings.warn(
-            f'shared_neighbor_list: AtomicData.from_ase was called '
-            f'{call_count} times, expected {expected_calls}. Upstream '
-            f'nequip may have stopped calling from_ase in calculate; '
-            f'neighbor-list dedup is no longer effective.',
-            RuntimeWarning,
-        )
 
 
 def ensemble_calculate(calculators, atoms):
@@ -52,6 +15,14 @@ def ensemble_calculate(calculators, atoms):
     updated positions -- identical freshness to the pre-patch code,
     just without the N-way redundancy.
 
+    Each calculator runs in its own thread so that models placed on
+    different GPU devices execute their forward passes concurrently.
+    Each thread receives its own copy of `atoms` to avoid shared-state
+    races. The GIL is released during CUDA kernel launches, so threads
+    on separate devices run truly in parallel. On a single device the
+    kernels are still serialized by CUDA, but there is no regression
+    versus sequential execution.
+
     Delegates all result extraction to each calculator's own
     calculate(), so unit conversions, output key handling, stress
     Voigt conversion, and ASE cache writeback stay inside nequip and
@@ -62,9 +33,43 @@ def ensemble_calculate(calculators, atoms):
 
     Returns (energies, forces) as parallel lists.
     """
-    with shared_neighbor_list(atoms, calculators[0].r_max, len(calculators)):
-        for calc in calculators:
-            calc.calculate(atoms=atoms)
+    import threading
+
+    from nequip.data import AtomicData
+
+    prebuilt = AtomicData.from_ase(atoms=atoms, r_max=calculators[0].r_max)
+    original = AtomicData.__dict__['from_ase']
+    call_count = 0
+    call_lock = threading.Lock()
+
+    def _cached(atoms=None, r_max=None, **kwargs):
+        nonlocal call_count
+        with call_lock:
+            call_count += 1
+        return prebuilt.clone()
+
+    AtomicData.from_ase = _cached
+    try:
+        atoms_copies = [atoms.copy() for _ in calculators]
+        threads = [
+            threading.Thread(target=calc.calculate, args=(ac,))
+            for calc, ac in zip(calculators, atoms_copies)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        AtomicData.from_ase = original
+
+    if call_count < len(calculators):
+        warnings.warn(
+            f'ensemble_calculate: AtomicData.from_ase was called '
+            f'{call_count} times, expected {len(calculators)}. Upstream '
+            f'nequip may have stopped calling from_ase in calculate; '
+            f'neighbor-list dedup is no longer effective.',
+            RuntimeWarning,
+        )
 
     energies = [float(calc.results['energy']) for calc in calculators]
     forces = [calc.results['forces'] for calc in calculators]
