@@ -98,6 +98,26 @@ sbatch job-nequip-gpu\_0.slurm; sbatch job-nequip-gpu\_1.slurm; sbatch job-nequi
 
 When your training is done, you will get deployed MLIP models (__depolyed-model\_\*\_\*.pth__). Then, go back to __MLIP exploration__ section to complete the loop.
 
+
+## Optional: automatic job submission
+By default ALmoMD only writes the DFT and training job scripts to disk — it does not submit them. You dispatch each one yourself with `sbatch ...` as shown above. This is the safer default for a first-time user or a shared cluster.
+
+If you want ALmoMD to call `inputs.job_command` (typically `sbatch`) on every generated script automatically, uncomment one line in each of the two files below:
+
+1) __libs/lib_dft.py__ (DFT auto-submit) — look for:
+```
+# subprocess.run([inputs.job_command, job_script])
+```
+and remove the leading `#`.
+
+2) __libs/lib_train.py__ (training auto-submit) — look for:
+```
+# subprocess.run([inputs.job_command, job_script]);
+```
+and remove the leading `#`.
+
+With both lines uncommented, a single `almomd cont` → `almomd gen` cycle will sbatch every DFT and training job on its own. Combine this with `job_dependency` in your `job-cont.slurm` to chain the full __cont → DFT → train → cont__ loop without manual intervention.
+
 # Contents
 - [Back to Home](https://keysongkang.github.io/ALmoMD/)
 - [Installation Guide](../docs/installation.md)
