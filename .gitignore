@@ -1,0 +1,94 @@
+# Emacs related files:
+*~
+
+# vim related files
+*.swp
+
+# aims output
+*.out
+
+# testcase folder
+testcases/
+data/*
+
+# vibes config file
+vibes.cfg
+
+# fireworks config file
+fireworks.cfg
+
+# python
+*.ipynb_checkpoints
+*.pyc
+.pytest_cache
+
+# Aims
+*geometry.in
+*control.in
+
+# ASE
+*parameters.ase
+
+# FireWorks
+launcher_*
+*.mod
+*.o
+*.so
+FW.json
+
+# Database Files
+*.db
+
+# build stuff
+build
+lib
+bin
+dist
+docker
+*.egg-info
+site
+
+# vscode
+.vscode
+
+# Output Files
+*.hdf5
+*.pick
+
+# Test Directories
+test_run
+
+# direnv
+**.envrc
+
+# venv
+venv
+
+# docker
+docker.md
+Dockerfile
+
+# pylint
+.pylintrc
+
+# poetry
+poetry.lock
+
+# doc
+doc/
+
+# ignore
+*.ignore
+ignore/
+
+# releases
+*.zip
+
+my_pyproject.toml
+
+.coverage
+coverage.xml
+codecov.ini
+
+# macOS
+.DS_Store

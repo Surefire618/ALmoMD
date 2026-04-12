@@ -2,11 +2,14 @@ import os
 import re
 import sys
 import subprocess
+import threading
+import time
 import numpy as np
 
 from ase        import Atoms
 from ase.data   import atomic_numbers
-
+from ase.io.aims import read_aims as read_aims_geometry
+from ase.geometry import find_mic
 
 # def mpi_print(string, rank):
 #     """Function [mpi_print]
@@ -23,6 +26,41 @@ from ase.data   import atomic_numbers
 #     if rank == 0:
 #         print(string)
 #     sys.stdout.flush() # Instant printing
+
+_TIMING_ENABLED = os.environ.get('ALMOMD_TIMING', '').lower() in ('1', 'true', 'yes', 'on')
+
+
+def timeit(f):
+    """Print wall-clock runtime of `f` when ALMOMD_TIMING=1 is set.
+
+    Off by default so decorated hot-path functions carry zero runtime
+    cost in production. Enable with e.g. `ALMOMD_TIMING=1 almomd cont`.
+    Uses time.perf_counter (higher resolution than time.time) and calls
+    torch.cuda.synchronize() if available so GPU work is not hidden
+    behind an early return.
+    """
+    if not _TIMING_ENABLED:
+        return f
+
+    import functools
+
+    try:
+        import torch
+        _sync = torch.cuda.synchronize if torch.cuda.is_available() else (lambda: None)
+    except ImportError:
+        _sync = lambda: None
+
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        _sync()
+        start = time.perf_counter()
+        ret = f(*args, **kwargs)
+        _sync()
+        print(f"{f.__name__} runs for {time.perf_counter() - start:.3f} s",
+              flush=True)
+        return ret
+
+    return wrapper
 
 
 def single_print(string):
@@ -223,6 +261,200 @@ def read_aims(file_name):
     return atom, total_E, np.array(forces)
 
 
+def get_sigma(f_data, f_model, rtol=1e-5, axis=None, silent=False):
+    """
+    Calculate RMSE / STD
+
+    Args:
+    ----
+        f_data (np.ndarray): input data
+        f_model (np.ndarray): input model data
+        rtol (float): assert f.mean() / f.std() < rtol
+        axis (tuple): axis along which mean and std are taken
+        silent (bool): silence warnings
+
+    """
+    f1 = np.asarray(f_data)
+    f2 = np.asarray(f_model)
+
+    # check f_data_mean, should be small
+    if np.any(f1.mean(axis=axis) > rtol * f1.std(axis=axis)) and not silent:
+        print(f"f_data.mean(axis=axis) is {f1.mean(axis=axis)}")
+
+    rmse = (f1 - f2).std(axis=axis)
+    std = f1.std(axis=axis)
+
+    return rmse / std
+
+class Structure(Atoms):
+    """
+    A wrapper of Atoms for calculating harmonic forces and anharmonicity
+    """
+    def __init__(self, *args, **kwargs):
+        Atoms.__init__(self, *args, **kwargs)
+        self.ref_structure:Atoms = None
+        self.displacements:np.ndarray = None
+        self.force_constants:np.ndarray = None
+        self.force_ha:np.ndarray = None
+        self.e_ref = []
+        self.eatoms_ref = []
+        self.sigma = None
+
+    @classmethod
+    def from_atoms(cls, atoms:Atoms):
+        return cls(
+            numbers=atoms.numbers,
+            positions=atoms.positions,
+            cell=atoms.cell,
+            pbc=atoms.pbc,
+            velocities=atoms.get_velocities(),
+        )
+
+    def set_ref_structure(self, filename="geometry.in.supercell", *args, **kwargs):
+        self.ref_structure = read_aims_geometry(filename)
+
+    def set_displacements(self, *args, **kwargs):
+        if self.ref_structure is None:
+            self.set_ref_structure(*args, **kwargs)
+        # Get the structral information
+        ref_cell = np.asarray(self.ref_structure.get_cell())
+        ref_positions = np.array(self.ref_structure.get_positions())
+        shape = ref_positions.shape
+        step_positions = np.array(self.positions)
+
+        # Get the displacements
+        displacements = step_positions - ref_positions
+        displacements = find_mic(displacements.reshape(-1, 3), ref_cell)[0]
+        self.displacements = displacements.reshape(*shape)
+
+    def get_displacements(self, *args, **kwargs) -> np.ndarray:
+        if self.displacements is None:
+            self.set_displacements(*args, **kwargs)
+        return self.displacements
+
+    def set_force_constants(self, filename="FORCE_CONSTANTS_remapped", *args, **kwargs):
+        self.force_constants = np.loadtxt(filename)
+
+    def set_fc_ha(self, *args, **kwargs):
+        if self.displacements is None:
+            self.set_displacements()
+        if self.force_constants is None:
+            self.set_force_constants(*args, **kwargs)
+
+        shape = self.displacements.shape
+        fc_ha = -self.force_constants @ self.displacements.flatten()
+        self.force_ha = fc_ha.reshape(shape)
+
+    def get_fc_ha(self, *args, **kwargs):
+        if self.force_ha is None:
+            self.set_fc_ha(*args, **kwargs)
+        return self.force_ha
+
+    def set_E_ha(self, *args, **kwargs):
+        if self.displacements is None:
+            self.set_displacements(*args, **kwargs)
+        if self.force_ha is None:
+            self.set_fc_ha(*args, **kwargs)
+
+        self.e_ha = self.displacements.flatten() @ -self.force_ha.flatten() / 2
+
+    def get_E_ha(self, *args, **kwargs):
+        if self.e_ha is None:
+            self.set_E_ha(*args, **kwargs)
+        return self.e_ha
+
+    def set_E_ref(self, nmodel, nstep, calculator, *args, **kwargs):
+        if self.ref_structure is None:
+            self.set_ref_structure(*args, **kwargs)
+
+        # # calculate in multi threading
+        # GPU_threading = True
+        # if GPU_threading:
+        #     # initialize threading for each model
+        #     t_list = []
+        #     for index_nmodel in range(nmodel):
+        #         for index_nstep in range(nstep):
+        #             index_totalmodel = index_nmodel * nstep + index_nstep
+        #             t = threading.Thread(
+        #                 target=calculator[index_totalmodel].calculate,
+        #                 args=[self.ref_structure,]
+        #             )
+        #             t_list.append(t)
+        #
+        #     # run each model
+        #     for t in t_list:
+        #         t.start()
+        #
+        #     # wait for another thread to finish
+        #     for t in t_list:
+        #         t.join()
+        # else:
+        #     for index_nmodel in range(nmodel):
+        #         for index_nstep in range(nstep):
+        #             index_totalmodel = index_nmodel * nstep + index_nstep
+        #             calculator[index_totalmodel].calculate(self.ref_structure)
+
+        # get the results
+        e_ref = []
+        eatom_ref = []
+        zndex = 0
+        for index_nmodel in range(nmodel):
+            for index_nstep in range(nstep):
+                self.ref_structure.calc = calculator[zndex]
+                try:
+                    eatom_ref.append(np.array(self.ref_structure.get_potential_energies()))
+                except Exception as e:
+                    # print(f"error encountered in get_potential_energies: {e}")
+                    eatom_ref.append(np.array([]))
+                e_ref.append(self.ref_structure.get_potential_energy())
+                zndex += 1
+
+        self.e_ref = np.array(e_ref)
+        self.eatom_ref = np.array(eatom_ref)
+
+    def get_E_ref(self, *args, **kwargs):
+        if not self.e_ref and not self.eatoms_ref:
+            self.set_E_ref(*args, **kwargs)
+
+        return [self.e_ref, self.eatom_ref]
+
+    def set_sigma(self, struc_step_forces, **kwargs): # FIXME struc_step_forces
+        if self.ref_structure is None:
+            self.set_ref_structure()
+        if self.force_constants is None:
+            self.set_force_constants()
+        if self.force_ha is None:
+            self.set_fc_ha()
+
+        # Get the force of the current step
+        fc_step = np.array(struc_step_forces)
+
+        # set sigma
+        self.sigma = get_sigma(fc_step, self.force_ha, silent=True)
+
+        # set sigma a
+        force_a = []
+        for fc_step_atom, fc_ha_atom in zip(fc_step, self.force_ha):
+            force_a.append(get_sigma(fc_step_atom, fc_ha_atom, silent=True))
+        self.sigma_a = force_a
+
+    def eval_sigma(self, al_type, *args, **kwargs):
+        self.set_sigma(*args, **kwargs)
+
+        if al_type == 'sigma_max':
+            return self.sigma_a
+        else:
+            return self.sigma
+
+    def update_structure(self, *args, **kwargs):
+        self.displacements:np.ndarray = None
+        self.force_ha:np.ndarray = None
+        self.e_ref = []
+        self.eatoms_ref = []
+        self.sigma = None
+
+
+@timeit
 def eval_sigma(struc_step_forces, struc_step_positions, al_type):
     """Function [read_input_file]
     Read 'input.in' and assign variables.
@@ -237,8 +469,6 @@ def eval_sigma(struc_step_forces, struc_step_positions, al_type):
     variables: dictionary
         A dictionary containing all new variables
     """
-
-    from vibes.anharmonicity_score import get_sigma
 
     displacements = get_displacements(struc_step_positions, 'geometry.in.supercell')
     fc_ha = get_fc_ha(displacements, 'FORCE_CONSTANTS_remapped')
@@ -257,12 +487,8 @@ def eval_sigma(struc_step_forces, struc_step_positions, al_type):
 
 
 def get_displacements(struc_step_positions, struc='geometry.in.supercell'):
-
-    from ase.geometry import find_mic
-    from ase.io.aims import read_aims
-
     # Read the ground state structure with the primitive cell
-    ref_struc_super = read_aims(struc)
+    ref_struc_super = read_aims_geometry(struc)
 
     # Get the structral information
     ref_cell = np.asarray(ref_struc_super.get_cell())
@@ -278,7 +504,7 @@ def get_displacements(struc_step_positions, struc='geometry.in.supercell'):
     return displacements
 
 
-
+@timeit
 def get_fc_ha(displacements, fc_file='FORCE_CONSTANTS_remapped'):
     # Get the harmonic force from the force constant of the phonon dispersion
     fc = np.loadtxt(fc_file)
@@ -287,7 +513,7 @@ def get_fc_ha(displacements, fc_file='FORCE_CONSTANTS_remapped'):
 
     return fc_ha.reshape(shape)
 
-
+@timeit
 def get_E_ha(displacements, fc_ha):
     return displacements.flatten() @ -fc_ha.flatten() / 2
 
@@ -412,3 +638,5 @@ def read_input_file(file_path):
                 variables[name] = value
 
     return variables
+
+

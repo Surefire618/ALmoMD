@@ -140,7 +140,9 @@ def run_DFT(inputs):
                         os.chdir(calcpath_cwd)
                 else:
                     # Get FHI-aims inputs from the template folder
-                    aims_write('geometry.in', traj_DFT[jtem])
+                    atoms = traj_DFT[jtem].copy()
+                    atoms.wrap()
+                    atoms.write("geometry.in", format="aims")
                     subprocess.run(['cp', '../../../DFT_INPUTS/aims.in', '.'])
                     # Collect the current calculation path
                     execute_cwd.append(os.getcwd())
@@ -157,9 +159,9 @@ def run_DFT(inputs):
                     if index_execute_cwd % inputs.num_calc == index_calc:
                         writing_input.write('cd '+value_execute_cwd+'\n')
                         writing_input.write(inputs.vibes_command+'\n')
-            # If the previous calculation is not finished, rerun it
+            # Auto-submission disabled by default. Uncomment to have
+            # almomd dispatch each generated DFT job script directly.
             # subprocess.run([inputs.job_command, job_script])
-            # os.system(f'{inputs.job_command} {job_script}')
 
     # Move back to the original position
     os.chdir(mainpath_cwd)

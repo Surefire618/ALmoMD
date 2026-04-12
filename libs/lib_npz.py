@@ -5,7 +5,7 @@ from tqdm import tqdm
 from ase.data   import atomic_numbers
 from ase.io     import read as atoms_read
 
-from libs.lib_util   import read_aims, single_print
+from libs.lib_util   import read_aims, single_print, Structure
 from vibes import son
 
 def generate_npz_DFT_init(inputs, traj, workpath):
@@ -199,15 +199,16 @@ def generate_npz_DFT(inputs, workpath):
                         atoms, atoms_potE, atoms_forces = read_aims(
                             f'./CALC/{inputs.temperature}K-{inputs.pressure}bar_{inputs.index}/{i}/aims/calculations/aims.out'
                             )
+                        atoms = Structure.from_atoms(atoms)
                         # Energy is shifted by the reference energy
                         # to avoid the unsual weighting with forces in NequIP
 
                         if inputs.harmonic_F:
                             from libs.lib_util import get_displacements, get_fc_ha, get_E_ha
-                            displacements = get_displacements(atoms.get_positions(), 'geometry.in.supercell')
-                            F_ha = get_fc_ha(displacements, 'FORCE_CONSTANTS_remapped')
+                            displacements = atoms.get_displacements(atoms.get_positions(), 'geometry.in.supercell')
+                            F_ha = atoms.get_fc_ha(displacements, 'FORCE_CONSTANTS_remapped')
                             F_step = np.array(atoms_forces) - F_ha
-                            E_ha = get_E_ha(displacements, F_ha)
+                            E_ha = atoms.get_E_ha(displacements, F_ha)
                             E_step = atoms_potE - inputs.E_gs - E_ha
                         else:
                             F_step = np.array(atoms_forces)
@@ -223,7 +224,7 @@ def generate_npz_DFT(inputs, workpath):
                         if inputs.npz_sigma:
                             from libs.lib_util     import eval_sigma
                             sigma_train[index_nstep].append(
-                                eval_sigma(
+                                atoms.eval_sigma(
                                     struc_step_forces = F_step,
                                     struc_step_positions = atoms.get_positions(),
                                     al_type = 'sigma'
@@ -231,7 +232,7 @@ def generate_npz_DFT(inputs, workpath):
                                 )
 
                         if inputs.ensemble == 'NPTisoiso' or inputs.train_stress:
-                            stress_train[index_nstep].append(atom.get_stress(voigt=False))
+                            stress_train[index_nstep].append(atoms.get_stress(voigt=False))
                         break
                     elif inputs.output_format == 'trajectory.son':
                         # Convert 'trajectory.son' format to ASE trajectory format

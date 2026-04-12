@@ -342,7 +342,8 @@ def execute_train_job(
                     if index_item % inputs.num_mdl_calc == index_num_mdl:
                         writing_input.write(job_item)
 
-            # Submit the job scripts
+            # Auto-submission disabled by default. Uncomment to have
+            # almomd dispatch each generated training job script directly.
             # subprocess.run([inputs.job_command, job_script]);
             os.chdir(currentpath)
 

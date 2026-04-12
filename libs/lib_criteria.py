@@ -4,11 +4,10 @@ import numpy as np
 import pandas as pd
 from decimal import Decimal
 from scipy import special
-from libs.lib_util import single_print
-
+from libs.lib_util import single_print, timeit, Structure
 
 def eval_uncert(
-    struc_step, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
+    struc_step:Structure, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
 ):
     """Function [eval_uncert]
     Evalulate the absolute and relative uncertainties of
@@ -90,9 +89,9 @@ def eval_uncert(
     else:
         sys.exit("You need to set al_type.")
         
-
+@timeit
 def eval_uncert_all(
-    struc_step, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
+    struc_step:Structure, nstep, nmodel, E_ref, calculator, al_type, harmonic_F
 ):
     """Function [eval_uncert_E]
     Evalulate the average and standard deviation of predicted energies.
@@ -133,24 +132,22 @@ def eval_uncert_all(
     # Get predicted potential and total energies shifted by E_ref (ground state energy)
     for index_nmodel in range(nmodel):
         for index_nstep in range(nstep):
-            struc_step.calc = calculator[zndex]
 
             if al_type == 'energy_max':
-                Epot_step.append(np.array(struc_step.get_potential_energies()) - E_ref[1][zndex])
+                Epot_step.append(np.array(calculator[zndex].get_potential_energies()) - E_ref[1][zndex])
             else:
-                Epot_step.append(struc_step.get_potential_energy() - E_ref[0][zndex])
+                Epot_step.append(calculator[zndex].get_potential_energy() - E_ref[0][zndex])
 
-            F_step.append(struc_step.get_forces())
+            F_step.append(calculator[zndex].get_forces())
             prd_struc.append(struc_step.get_positions())
             zndex += 1
 
     # Get the average and standard deviation of predicted potential energies
     # Get the average and standard deviation of the norm of predicted forces
     if harmonic_F:
-        from libs.lib_util import get_displacements, get_fc_ha, get_E_ha
-        displacements = get_displacements(struc_step.get_positions(), 'geometry.in.supercell')
-        F_ha = get_fc_ha(displacements, 'FORCE_CONSTANTS_remapped')
-        E_ha = get_E_ha(displacements, F_ha)
+        displacements = struc_step.get_displacements(struc_step.get_positions(), 'geometry.in.supercell')
+        F_ha = struc_step.get_fc_ha(displacements, 'FORCE_CONSTANTS_remapped')
+        E_ha = struc_step.get_E_ha(displacements, F_ha)
         Epot_step = Epot_step + E_ha
         F_step = F_step + F_ha
 
@@ -164,7 +161,10 @@ def eval_uncert_all(
 
     prd_sigma = []
     for prd_F_step, prd_struc_step in zip(F_step, prd_struc):
-        prd_sigma.append(eval_sigma(prd_F_step, prd_struc_step, al_type))
+        prd_sigma.append(struc_step.eval_sigma(
+            struc_step_forces=prd_F_step,
+            struc_step_positions=prd_struc_step,
+            al_type=al_type))
 
     # Get the average and standard deviation of the norm of predicted forces
     sigma_step_avg = np.average(prd_sigma, axis=0)
@@ -172,7 +172,7 @@ def eval_uncert_all(
 
     return Epot_step_avg, Epot_step_std, F_step_norm_avg, F_step_norm_std, sigma_step_avg, sigma_step_std
 
-
+@timeit
 def get_criteria(
     temperature, pressure, index, steps_init, al_type
 ):
@@ -280,7 +280,7 @@ def get_criteria(
 
     return criteria
 
-
+@timeit
 def get_result(inputs, get_type):
     """Function [get_result]
     Get average and standard deviation of absolute and relative undertainty
@@ -309,36 +309,35 @@ def get_result(inputs, get_type):
         index_col=False, delimiter='\t'
         )
 
-    result_print = ''
     # Get their average and standard deviation
     if inputs.al_type == 'energy' or inputs.al_type == 'energy_max':
-        UncerAbs_E_list = uncert_data.loc[:,'UncertAbs_E'].values
-        UncerRel_E_list = uncert_data.loc[:,'UncertRel_E'].values
-        criteria_UncertAbs_E_avg_all = uncert_average(UncerAbs_E_list[:])
-        criteria_UncertRel_E_avg_all = uncert_average(UncerRel_E_list[:])
-        result_print +=   '\t' + uncert_strconvter(criteria_UncertRel_E_avg_all)\
-                        + '\t' + uncert_strconvter(criteria_UncertAbs_E_avg_all)
+        al_name = 'E'
 
-    if inputs.al_type == 'force' or inputs.al_type == 'force_max':
-        UncerAbs_F_list = uncert_data.loc[:,'UncertAbs_F'].values
-        UncerRel_F_list = uncert_data.loc[:,'UncertRel_F'].values
-        criteria_UncertAbs_F_avg_all = uncert_average(UncerAbs_F_list[:])
-        criteria_UncertRel_F_avg_all = uncert_average(UncerRel_F_list[:])
-        result_print +=   '\t' + uncert_strconvter(criteria_UncertRel_F_avg_all)\
-                        + '\t' + uncert_strconvter(criteria_UncertAbs_F_avg_all)
+    elif inputs.al_type == 'force' or inputs.al_type == 'force_max':
+        al_name = 'F'
 
-    if inputs.al_type == 'sigma' or inputs.al_type == 'sigma_max':
-        UncerAbs_S_list = uncert_data.loc[:,'UncertAbs_S'].values
-        UncerRel_S_list = uncert_data.loc[:,'UncertRel_S'].values
-        criteria_UncertAbs_S_avg_all = uncert_average(UncerAbs_S_list[:])
-        criteria_UncertRel_S_avg_all = uncert_average(UncerRel_S_list[:])
-        result_print +=   '\t' + uncert_strconvter(criteria_UncertAbs_S_avg_all)\
-                        + '\t' + uncert_strconvter(criteria_UncertRel_S_avg_all)
+    elif inputs.al_type == 'sigma' or inputs.al_type == 'sigma_max':
+        al_name = 'S'
+
+    else:
+        al_name = None
+
+    uncertabs_key = f"UncertAbs_{al_name}"
+    uncertrel_key = f"UncertRel_{al_name}"
+
+    UncerAbs_list = uncert_data.loc[:,uncertabs_key].values
+    UncerRel_list = uncert_data.loc[:,uncertrel_key].values
+    criteria_UncertAbs_avg_all = uncert_average(UncerAbs_list[:])
+    criteria_UncertRel_avg_all = uncert_average(UncerRel_list[:])
 
     # Record the average values
-    with open('result.txt', 'a') as criteriafile:
-        criteriafile.write(result_print+ '\n')
-
+    results = pd.read_csv('result.txt', index_col=False, delimiter='\t')
+    index = results[results.Iteration == get_index].index
+    criteria_uncertabs_key = f"Un_Abs_{al_name}_avg_a"
+    criteria_uncertrel_key = f"Un_Rel_{al_name}_avg_a"
+    results.loc[index, criteria_uncertabs_key] = criteria_UncertAbs_avg_all
+    results.loc[index, criteria_uncertrel_key] = criteria_UncertRel_avg_all
+    results.to_csv("result.txt", index=False, sep='\t', float_format='%.5e')
 
     
 def uncert_average(itemlist):
@@ -385,7 +384,7 @@ def uncert_strconvter(value):
     
     return '{:.5e}'.format(Decimal(value))
     
-
+@timeit
 def get_criteria_prob(inputs, Epot_step, uncerts, criteria):
     """Function [get_criteria_prob]
     Utilize the average and standard deviation obtained from 'get_criteria'

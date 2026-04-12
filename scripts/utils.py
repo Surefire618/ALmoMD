@@ -2,6 +2,8 @@ import os
 import re
 import sys
 from vibes import son
+from vibes.trajectory import reader, Trajectory
+from vibes.helpers.converters import atoms2dict
 import random
 import argparse
 import collections
@@ -15,31 +17,44 @@ from libs.lib_util import check_mkdir, rm_file, single_print, output_init
 
 version = '0.2.0'
 
-def aims2son(temperature):
-    """Function [aims2son]
-    Convert aims.out to trajectory.son and assign the velocity based on the 
-    Maxwell-Boltzmann distribution using the temperature.
-    
-    Currently it works with FHI-aims version 220506.
+def traj2son(traj: Trajectory) -> list[dict]:
+    """Convert Trajectory to list of dict for son.dump
+    """
+    data = []
+    for atoms in traj:
+        results = atoms.calc.results
+        if "stresses" in results:
+            if np.isnan(results.get('stresses')).all():
+                del results["stresses"]
+        atomsdict = {"atoms": atoms2dict(atoms), "calculator": results}
+        data.append(atomsdict)
+    return data
 
-    Parameters:
+def aims2son(temperature):
+    """function [aims2son]
+    convert aims.out to trajectory.son and assign the velocity based on the 
+    maxwell-boltzmann distribution using the temperature.
+    
+    currently it works with fhi-aims version 220506.
+
+    parameters:
 
     temperature: float
-        temperature in units of Kelvin.
+        temperature in units of kelvin.
     """
 
-    # Print the head
+    # print the head
     output_init('aims2son', version)
-    single_print(f'[aims2son]\tConvert aims.out to trajectory.son')
+    single_print(f'[aims2son]\tconvert aims.out to trajectory.son')
 
-    # Tracking the reading line for the specific contents
-    index_struc = 0             # Read a structral information
-    index_force = 0             # Read force components
-    index_stress_whole = 0      # Read stress tensors for unit cell
-    index_stress_individual = 0 # Read stress tensors for each atom
-    signal = 0                  # Indicate each step
+    # tracking the reading line for the specific contents
+    index_struc = 0             # read a structral information
+    index_force = 0             # read force components
+    index_stress_whole = 0      # read stress tensors for unit cell
+    index_stress_individual = 0 # read stress tensors for each atom
+    signal = 0                  # indicate each step
 
-    # Properties to be read
+    # properties to be read
     cell = []
     forces = []
     numbers = []
@@ -48,117 +63,117 @@ def aims2son(temperature):
     mass = []
     stress_whole = []
     stress_individual = []
-    pbc = [True, True, True]    # Currently, always periodic 
-    NumAtoms = 0
+    pbc = [true, true, true]    # currently, always periodic 
+    numatoms = 0
 
-    single_print(f'[aims2son]\tRead aims.out file ...')
-    with open('aims.out', "r") as file_one: # Open aims.out file
-        for line in file_one: # Go through whole contents line by line
+    single_print(f'[aims2son]\tread aims.out file ...')
+    with open('aims.out', "r") as file_one: # open aims.out file
+        for line in file_one: # go through whole contents line by line
 
-            # Assign NumAoms by searching "Number of atoms"
-            if re.search('Number of atoms', line):
-                NumAtoms = int(re.findall(r'\d+', line)[0])
+            # assign numaoms by searching "number of atoms"
+            if re.search('number of atoms', line):
+                numatoms = int(re.findall(r'\d+', line)[0])
 
-            # Assign mass by searching "Found atomic mass"
-            # It follows the sequence of basis info
-            if re.search('Found atomic mass :', line):
+            # assign mass by searching "found atomic mass"
+            # it follows the sequence of basis info
+            if re.search('found atomic mass :', line):
                 mass.append(float(float(re.findall(r'[+-]?\d+(?:\.\d+)?', line)[0])))
 
-            # Assign total_E by searching "Total energy corrected"
-            if re.search('Total energy corrected', line):
-                total_E = float(re.findall(r'[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)', line)[0])
+            # assign total_e by searching "total energy corrected"
+            if re.search('total energy corrected', line):
+                total_e = float(re.findall(r'[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[ee][+\-]?\d+)', line)[0])
 
-            # Assign structural information by searching "Atomic structure ..."
-            if re.search('Atomic structure that was used in the preceding time step of the wrapper', line):
+            # assign structural information by searching "atomic structure ..."
+            if re.search('atomic structure that was used in the preceding time step of the wrapper', line):
                 index_struc = 1  # indicates it found that line
-            # When it found that,
+            # when it found that,
             if index_struc > 0:
-                # Assign cell (lattice parameters) after 3 lines
+                # assign cell (lattice parameters) after 3 lines
                 if index_struc > 2 and index_struc < 6:
                     cell.append([float(i) for i in re.findall(r'[+-]?\d+(?:\.\d+)?', line)])
                     index_struc += 1
-                # Assign (atomic) positions after 7 lines until 7+NumAtoms lines
-                elif index_struc > 6 and index_struc < (7+NumAtoms):
+                # assign (atomic) positions after 7 lines until 7+numatoms lines
+                elif index_struc > 6 and index_struc < (7+numatoms):
                     positions.append([float(i) for i in re.findall(r'[+-]?\d+(?:\.\d+)?', line)])
                     numbers.append(atomic_numbers[(line[-3:].replace(' ', '')).replace('\n','')])
                     numbers_symbol.append((line[-3:].replace(' ', '')).replace('\n',''))
                     index_struc += 1
-                # When it reaches 7+NumAtoms line, 
-                elif index_struc == (7+NumAtoms):
+                # when it reaches 7+numatoms line, 
+                elif index_struc == (7+numatoms):
                     index_struc = 0  # initilize index_struc
-                    signal = 1       # indicates that current MD step is done
+                    signal = 1       # indicates that current md step is done
                 else:
-                    index_struc += 1 # Otherwise, skip a line
+                    index_struc += 1 # otherwise, skip a line
 
-            # Assign forces (on atoms) by searching "Total atomic forces"
-            if re.search('Total atomic forces', line):
+            # assign forces (on atoms) by searching "total atomic forces"
+            if re.search('total atomic forces', line):
                 index_force = 1  # indicates it found that line
-            # When it found that,
+            # when it found that,
             if index_force > 0:
-                # Assign forces on atoms after 2 lines until 2+NumAtoms lines
-                if index_force > 1 and index_force < (2+NumAtoms):
-                    forces.append([float(i) for i in re.findall(r'[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)', line)])
+                # assign forces on atoms after 2 lines until 2+numatoms lines
+                if index_force > 1 and index_force < (2+numatoms):
+                    forces.append([float(i) for i in re.findall(r'[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[ee][+\-]?\d+)', line)])
                     index_force += 1
-                # When it reaches 2+NumAtoms line,
-                elif index_force == (2+NumAtoms):
+                # when it reaches 2+numatoms line,
+                elif index_force == (2+numatoms):
                     index_force = 0  # initialize index_force
                 else:
-                    index_force += 1 # Otherwise, skip a line
+                    index_force += 1 # otherwise, skip a line
 
-            # Assign stress_whole (stess tensor on unitcell) by searching "Analytical stress tensor"
-            if re.search('Analytical stress tensor - Symmetrized', line):
+            # assign stress_whole (stess tensor on unitcell) by searching "analytical stress tensor"
+            if re.search('analytical stress tensor - symmetrized', line):
                 index_stress_whole = 1 # indicates it found that line
-            # When it found that,
+            # when it found that,
             if index_stress_whole > 0:
-                # Assign stress tensor after 6 lines
+                # assign stress tensor after 6 lines
                 if index_stress_whole > 5 and index_stress_whole < 9:
                     stress_whole.append([float(i) for i in re.findall(r'[+-]?\d+(?:\.\d+)?', line)])
                     index_stress_whole += 1
-                # When it reaches 6+3 line,
+                # when it reaches 6+3 line,
                 elif index_stress_whole == 9:
                     index_stress_whole = 0  # initialize index_stress_whole
                 else:
-                    index_stress_whole += 1 # Otherwise, skip a line
+                    index_stress_whole += 1 # otherwise, skip a line
 
-            # Assign stress_individual (stress tensor on each atom) by searching "used for heat flux"
+            # assign stress_individual (stress tensor on each atom) by searching "used for heat flux"
             if re.search('used for heat flux calculation', line):
                 index_stress_individual = 1 # indicates it found that line
-            # When it found that,
+            # when it found that,
             if index_stress_individual > 0:
-                # Assign stress tensor for each atom after 4 lines until 4+NumAtoms lines
-                if index_stress_individual > 3 and index_stress_individual < (4+NumAtoms):
-                    stress_temp = [float(i) for i in re.findall(r'[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)', line)]
+                # assign stress tensor for each atom after 4 lines until 4+numatoms lines
+                if index_stress_individual > 3 and index_stress_individual < (4+numatoms):
+                    stress_temp = [float(i) for i in re.findall(r'[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[ee][+\-]?\d+)', line)]
                     stress_individual.append([[stress_temp[0],stress_temp[4],stress_temp[5]],[stress_temp[4],stress_temp[2],stress_temp[5]],[stress_temp[5],stress_temp[5],stress_temp[3]]])
                     index_stress_individual += 1
-                # When it reaches 4+NumAtoms line,
-                elif index_stress_individual == 4+NumAtoms:
+                # when it reaches 4+numatoms line,
+                elif index_stress_individual == 4+numatoms:
                     index_stress_individual = 0  # initialize index_stres_individual
                 else:
-                    index_stress_individual += 1 # Otherwise, skip a line
+                    index_stress_individual += 1 # otherwise, skip a line
 
-            # End of each MD step
+            # end of each md step
             if signal:
-                # Create the ASE atoms
-                atom = Atoms(
+                # create the ase atoms
+                atom = atoms(
                     numbers,
                     positions=positions,
                     cell=cell,
                     pbc=pbc
                 )
-                # Assign the velocities at target temperature based on the Maxwell-Boltzmann distribution
-                MaxwellBoltzmannDistribution(atom, temperature_K=temperature, force_temp=True)
+                # assign the velocities at target temperature based on the maxwell-boltzmann distribution
+                maxwellboltzmanndistribution(atom, temperature_k=temperature, force_temp=true)
 
-                # Convert the format of symbols and masses for trajectory.son
+                # convert the format of symbols and masses for trajectory.son
                 symbols = []
                 masses = []
                 idx = 0
                 # key: atomic element, value: the total number of coressponding atoms
-                for key, value in collections.Counter(numbers_symbol).items():
+                for key, value in collections.counter(numbers_symbol).items():
                     symbols.append([value, key])
                     masses.append([value, mass[idx]])
                     idx += 1
 
-                # Prepare the dictionary to summarize the atoms_info
+                # prepare the dictionary to summarize the atoms_info
                 atoms_info = {
                     "pbc": pbc,
                     "cell": cell,
@@ -168,28 +183,28 @@ def aims2son(temperature):
                     "masses": masses
                 }
 
-                # Prepare the dictionary to summarize the calculator_info
+                # prepare the dictionary to summarize the calculator_info
                 calculator_info = {
-                    "energy": total_E,
+                    "energy": total_e,
                     "forces": forces,
                     "stress": stress_whole,
                     "stresses": stress_individual
                 }
 
-                # Merge the dictionaries together
+                # merge the dictionaries together
                 atom_dict = {
                     "atoms": atoms_info,
                     "calculator": calculator_info
                 }
 
-                # Initialize all indexes for next MD step
+                # initialize all indexes for next md step
                 index_struc = 0
                 index_force = 0
                 index_stress_whole = 0
                 index_stress_individual = 0
                 signal = 0
 
-                # Initialize all properties for next MD step
+                # initialize all properties for next md step
                 cell = []
                 forces = []
                 numbers = []
@@ -198,10 +213,10 @@ def aims2son(temperature):
                 stress_whole = []
                 stress_individual = []
 
-                # Dump extracted atom info summary of current MD step into trajectory.son
-                son.dump(atom_dict, 'trajectory.son', is_metadata=False)
+                # dump extracted atom info summary of current md step into trajectory.son
+                son.dump(atom_dict, 'trajectory.son', is_metadata=false)
 
-    single_print(f'[aims2son]\t!! Finish converting aims.out to trajectory.son')
+    single_print(f'[aims2son]\t!! finish converting aims.out to trajectory.son')
 
 
 def split_son(num_split, E_gs, harmonic_F=False):
@@ -223,9 +238,18 @@ def split_son(num_split, E_gs, harmonic_F=False):
     """
     from libs.lib_util     import eval_sigma
 
+    # Check trajectory.son or trajectory.nc path exists
+    if os.path.exists("trajectory.son"):
+        trajname = "trajectory.son"
+    elif os.path.exists("trajectory.nc"):
+        trajname = "trajectory.nc"
+    else:
+        trajname = "trajectory.son"
+        single_print(f'[split_son]\tWarning! {trajname} file not found!')
+
     # Print the head
     output_init('split_son', version)
-    single_print(f'[split_son]\tInitiate splitting trajectory.son')
+    single_print(f'[split_son]\tInitiate splitting {trajname}')
 
     if harmonic_F:
         single_print(f'[split_son]\tharmoic_F = True: Harmonic term will be excluded')
@@ -234,14 +258,25 @@ def split_son(num_split, E_gs, harmonic_F=False):
     E_gs = str(E_gs)
     E_gs = eval(E_gs)
 
-    single_print(f'[split_son]\tRead trajectory.son file')
-    # Read trajectory.son file
-    metadata, data = son.load('trajectory.son')
+    single_print(f'[split_son]\tRead {trajname} file')
+    # Read trajectory file
+    _data = reader(trajname)
+    metadata = _data.metadata
 
-    # Randomly sample testing data with a total count of num_split.
-    test_data = random.sample(data, num_split)
-    # Extract the training data that is not included in the testing data
-    train_data = [d for d in data if d not in test_data]
+    # Convert Trajectory object to list of atoms dictionary for son.dump()
+    if isinstance(_data[0], Atoms):
+        data = traj2son(_data)
+    else:
+        data = _data
+
+    # Randomly sample training and testing data index with a total count of num_split.
+    data_index = list(range(len(data)))
+    test_index = random.sample(data_index, num_split)
+    train_index = [id for id in data_index if id not in test_index]
+
+    # Extract the training and testing data using data index
+    test_data = [data[id] for id in test_index]
+    train_data = [data[id] for id in train_index]
     
     # Check the existance of trajectory_test.son and trajectory_train.son files,
     # because it is annoying when we mixuse these files with different sampling
